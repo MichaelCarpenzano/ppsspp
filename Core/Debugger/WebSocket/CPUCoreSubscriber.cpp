@@ -71,7 +71,7 @@ void WebSocketCPUStepping(DebuggerRequest &req) {
 	if (!currentDebugMIPS->isAlive()) {
 		return req.Fail("CPU not started");
 	}
-	if (!Core_IsStepping() && Core_IsActive()) {
+	if (!Core_IsStepping()) {
 		Core_Break(BreakReason::DebugStep, 0);
 	}
 }

@@ -61,6 +61,7 @@
 #include "Core/Debugger/WebSocket/MemoryInfoSubscriber.h"
 #include "Core/Debugger/WebSocket/MemorySubscriber.h"
 #include "Core/Debugger/WebSocket/ReplaySubscriber.h"
+#include "Core/Debugger/WebSocket/SaveStateSubscriber.h"
 #include "Core/Debugger/WebSocket/SteppingSubscriber.h"
 #include "Core/Debugger/WebSocket/ClientConfigSubscriber.h"
 
@@ -78,6 +79,7 @@ static const std::vector<SubscriberInit> subscribers({
 	&WebSocketMemoryInfoInit,
 	&WebSocketMemoryInit,
 	&WebSocketReplayInit,
+	&WebSocketSaveStateInit,
 	&WebSocketSteppingInit,
 	&WebSocketClientConfigInit,
 });
@@ -183,7 +185,7 @@ void HandleDebuggerRequest(const http::ServerRequest &request) {
 		}
 	});
 
-	ws->SetBinaryHandler([&](const std::vector<uint8_t> &d) {
+	ws->SetBinaryHandler([&](const std::vector<uint8_t> & /*d*/) {
 		ERROR_LOG(Log::Debugger, "Received binary WebSocket frame, not supported");
 		ws->Send(DebuggerErrorEvent("Bad message: binary WebSocket frames are not supported", LogLevel::LERROR));
 	});

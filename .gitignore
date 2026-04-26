@@ -63,6 +63,14 @@ PPSSPPControls.dat
 # Qt Linguist files
 *.qm
 
+# Python bytecode
+__pycache__/
+*.pyc
+
+# MCP adapter runtime artifacts
+Tools/mcp_adapter/loop_logs/
+Tools/mcp_adapter/remote_debugger_p*.ini
+
 # Gradle/Android Studio
 .gradle
 .idea
@@ -151,3 +159,6 @@ RAPrefs_PPSSPP.cfg
 cmake-build-*/
 
 /.vscode/
+
+/.docs/
+.github/.copilot_instructions.md

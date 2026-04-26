@@ -19,9 +19,7 @@
 #include <condition_variable>
 
 #include "Common/Log.h"
-#include "Common/Thread/ThreadUtil.h"
 #include "Core/Core.h"
-#include "Core/HW/Display.h"
 #include "GPU/Common/GPUDebugInterface.h"
 #include "GPU/Debugger/Stepping.h"
 #include "GPU/GPUState.h"
@@ -86,7 +84,7 @@ const char *PauseActionToString(PauseAction action) {
 	}
 }
 
-static void SetPauseAction(PauseAction act, bool waitComplete = true) {
+static void SetPauseAction(PauseAction act, bool /*waitComplete*/ = true) {
 	pauseLock.lock();
 	std::unique_lock<std::mutex> guard(actionLock);
 	pauseAction = act;
@@ -162,7 +160,7 @@ bool ProcessStepping() {
 	_dbg_assert_(gpuDebug);
 
 	std::unique_lock<std::mutex> guard(pauseLock);
-	if (coreState != CORE_STEPPING_GE) {
+	if (coreState != CORE_STEPPING_GE && coreState != CORE_STEPPING_CPU) {
 		// Not stepping any more, don't try.
 		actionComplete = true;
 		actionWait.notify_all();
@@ -170,6 +168,12 @@ bool ProcessStepping() {
 	}
 
 	if (pauseAction == PAUSE_CONTINUE) {
+		if (coreState == CORE_STEPPING_CPU) {
+			// CPU stepping owns run/resume state; just acknowledge completion.
+			actionComplete = true;
+			actionWait.notify_all();
+			return false;
+		}
 		// This is fine, can just mean to run to the next breakpoint/event.
 		DEBUG_LOG(Log::GeDebugger, "Continuing...");
 		actionComplete = true;

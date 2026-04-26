@@ -39,6 +39,7 @@ struct WebSocketSteppingState : public DebuggerSubscriber {
 	void Into(DebuggerRequest &req);
 	void Over(DebuggerRequest &req);
 	void Out(DebuggerRequest &req);
+	void Frame(DebuggerRequest &req);
 	void RunUntil(DebuggerRequest &req);
 	void HLE(DebuggerRequest &req);
 
@@ -54,6 +55,7 @@ DebuggerSubscriber *WebSocketSteppingInit(DebuggerEventHandlerMap &map) {
 	map["cpu.stepInto"] = [p](DebuggerRequest &req) { p->Into(req); };
 	map["cpu.stepOver"] = [p](DebuggerRequest &req) { p->Over(req); };
 	map["cpu.stepOut"]  = [p](DebuggerRequest &req) { p->Out(req); };
+	map["cpu.stepFrame"] = [p](DebuggerRequest &req) { p->Frame(req); };
 	map["cpu.runUntil"] = [p](DebuggerRequest &req) { p->RunUntil(req); };
 	map["cpu.nextHLE"]  = [p](DebuggerRequest &req) { p->HLE(req); };
 	return p;
@@ -219,6 +221,27 @@ void WebSocketSteppingState::Out(DebuggerRequest &req) {
 			AddThreadCondition(breakpointAddress, threadID);
 		Core_Resume();
 	}
+}
+
+// Advance emulation by exactly one frame (cpu.stepFrame)
+//
+// No parameters.
+//
+// Response (same event name):
+//  - accepted: boolean, always true when accepted for execution.
+//
+// Completion is signaled asynchronously by the usual "cpu.stepping" event
+// with reason "frame.after".
+void WebSocketSteppingState::Frame(DebuggerRequest &req) {
+	if (!currentDebugMIPS->isAlive())
+		return req.Fail("CPU not started");
+	if (!Core_IsStepping())
+		return req.Fail("CPU currently running (cpu.stepping first)");
+	if (!Core_RequestCPUStep(CPUStepType::Frame, 0))
+		return req.Fail("Could not queue frame step");
+
+	JsonWriter &json = req.Respond();
+	json.writeBool("accepted", true);
 }
 
 // Run until a certain address (cpu.runUntil)
