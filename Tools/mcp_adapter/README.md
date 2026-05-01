@@ -13,6 +13,21 @@ This folder contains a thin MCP server that bridges to PPSSPP's built-in debugge
 - `save_state` (save to in-memory savestate slot 0-4)
 - `load_state` (load from in-memory savestate slot 0-4)
 - `list_states` (list in-memory savestate slot occupancy)
+- `backend_status` (debugger websocket health)
+- input recording/replay: `record_inputs_start`, `record_inputs_stop`,
+  `record_inputs_export`, `replay_load_inputs`, `replay_run`
+- trace sessions: `trace_start`, `trace_stop`, `trace_export_manifest`,
+  `trace_summary`
+- hash probes: `frame_hash`, `memory_region_hash`, `state_fingerprint`
+- trace comparison: `diff_trace`, `find_first_divergence`
+
+Read-only MCP resources are also exposed:
+
+- `ppsspp://capabilities`
+- `ppsspp://session`
+- `ppsspp://game`
+- `ppsspp://memory-map`
+- `ppsspp://trace-schema`
 
 ## Transport
 
@@ -37,6 +52,9 @@ Optional overrides:
 - `PPSSPP_DEBUGGER_WS` (default: `ws://127.0.0.1:3250/debugger`)
 - `PPSSPP_DEBUGGER_TIMEOUT` (default: `6.0` seconds)
 - `PPSSPP_DEBUGGER_FRAME_TIMEOUT` (default: `15.0` seconds)
+- `PPSSPP_MCP_ARTIFACT_ROOT` (default:
+  `Tools/mcp_adapter/artifacts`)
+- `PPSSPP_MCP_LOG_LEVEL` (default: `WARNING`; logs go to stderr)
 
 You can also pass CLI flags:
 
@@ -135,3 +153,7 @@ for performance tuning.
 - `get_frame` returns MCP image content with PNG base64 data.
 - `save_state` / `load_state` require stepping mode and enforce slot bounds.
 - If PPSSPP is not reachable, tool calls return MCP tool errors.
+- Invalid tool arguments return structured error JSON with `code`, `message`,
+  `hint`, and `retryable`.
+- Trace and replay artifacts are limited to the configured artifact root and
+  include SHA-256 hashes for deterministic comparisons.
