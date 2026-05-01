@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ppsspp": {
+      "command": "python3",
+      "args": [
+        "./scripts/run_ppsspp_mcp.py"
+      ],
+      "cwd": ".",
+      "env": {
+        "PPSSPP_DEBUGGER_WS": "ws://127.0.0.1:8765/debugger"
+      }
+    }
+  }
+}

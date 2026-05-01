@@ -44,6 +44,68 @@ You can also pass CLI flags:
 - `--request-timeout`
 - `--frame-timeout`
 
+## Use from Codex
+
+Codex can launch this adapter as a local stdio MCP server. Register it once
+with the Codex MCP manager:
+
+```bash
+codex mcp add ppsspp \
+  --env PPSSPP_DEBUGGER_WS=ws://127.0.0.1:8765/debugger \
+  -- /Library/Developer/CommandLineTools/usr/bin/python3 \
+  /Users/michaelcarpenzano/Repos/ppsspp/Tools/mcp_adapter/ppsspp_mcp_server.py
+```
+
+Use the same port that PPSSPP's debugger is listening on. The adapter's built-in
+default is `ws://127.0.0.1:3250/debugger`, while this directory's
+`remote_debugger.ini` uses port `8765`.
+
+Check the registration:
+
+```bash
+codex mcp list
+codex mcp get ppsspp
+```
+
+Then restart Codex or open a new Codex session so the new MCP tools are loaded.
+PPSSPP only needs to be running when a tool is called; `tools/list` works
+without an active emulator connection.
+
+If you use a virtual environment, point Codex at that Python instead:
+
+```bash
+python3 -m venv Tools/mcp_adapter/.venv
+Tools/mcp_adapter/.venv/bin/python -m pip install -r Tools/mcp_adapter/requirements.txt
+codex mcp add ppsspp \
+  --env PPSSPP_DEBUGGER_WS=ws://127.0.0.1:8765/debugger \
+  -- /Users/michaelcarpenzano/Repos/ppsspp/Tools/mcp_adapter/.venv/bin/python \
+  /Users/michaelcarpenzano/Repos/ppsspp/Tools/mcp_adapter/ppsspp_mcp_server.py
+```
+
+Remove the registration with:
+
+```bash
+codex mcp remove ppsspp
+```
+
+## Use as a Codex Plugin
+
+This repo also includes a repo-local Codex plugin at:
+
+- `plugins/ppsspp-debugger`
+
+The plugin is packaging around this MCP adapter. It provides:
+
+- `.codex-plugin/plugin.json` for Codex plugin metadata
+- `.mcp.json` for the bundled PPSSPP MCP server
+- `skills/ppsspp-debugger/SKILL.md` with debugger workflow instructions
+- `scripts/run_ppsspp_mcp.py` to launch the repo-local adapter
+
+This is usually better than registering the raw MCP server when the goal is a
+reusable Codex workflow, because the plugin can bundle both tools and operating
+instructions. It is not a replacement for MCP; it uses MCP as the tool
+transport.
+
 ## Agent Loop Utility
 
 A minimal observe→act helper is included:

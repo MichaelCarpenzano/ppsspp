@@ -1,0 +1,44 @@
+{
+  "name": "ppsspp-debugger",
+  "version": "0.1.0",
+  "description": "Expose PPSSPP debugger controls and emulator state to Codex through a local MCP server.",
+  "author": {
+    "name": "PPSSPP Project",
+    "email": "unknown@example.com",
+    "url": "https://github.com/hrydgard/ppsspp"
+  },
+  "homepage": "https://github.com/hrydgard/ppsspp",
+  "repository": "https://github.com/hrydgard/ppsspp",
+  "license": "GPL-2.0-or-later",
+  "keywords": [
+    "ppsspp",
+    "psp",
+    "emulator",
+    "debugger",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "PPSSPP Debugger",
+    "shortDescription": "Debug PSP software through PPSSPP",
+    "longDescription": "Provides Codex with PPSSPP debugger tools for frame capture, deterministic frame stepping, input injection, PSP memory reads, game reset, and in-memory savestate control.",
+    "developerName": "PPSSPP Project",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "MCP",
+      "Debugging"
+    ],
+    "websiteURL": "https://www.ppsspp.org/",
+    "privacyPolicyURL": "https://www.ppsspp.org/privacy.html",
+    "termsOfServiceURL": "https://www.ppsspp.org/",
+    "defaultPrompt": [
+      "Capture the current PPSSPP frame and state.",
+      "Step PPSSPP one frame and inspect the result.",
+      "Debug this PSP rendering issue with traces."
+    ],
+    "brandColor": "#2563EB",
+    "screenshots": []
+  }
+}
