@@ -20,12 +20,14 @@
 #include "Core/System.h"
 #include "Core/CoreTiming.h"
 #include "Core/Debugger/Breakpoints.h"
+#include "Core/Debugger/WebSocket/SteppingBroadcaster.h"
 #include "Core/Debugger/WebSocket/CPUCoreSubscriber.h"
 #include "Core/Debugger/WebSocket/WebSocketUtils.h"
 #include "Core/HLE/sceKernelThread.h"
 #include "Core/MIPS/MIPS.h"
 #include "Core/MIPS/MIPSDebugInterface.h"
 #include "Core/Reporting.h"
+#include "GPU/GPU.h"
 
 DebuggerSubscriber *WebSocketCPUCoreInit(DebuggerEventHandlerMap &map) {
 	// No need to bind or alloc state, these are all global.
@@ -105,6 +107,9 @@ void WebSocketCPUResume(DebuggerRequest &req) {
 //  - paused: boolean, CPU paused or not started yet.
 //  - pc: number value of PC register (inaccurate unless stepping.)
 //  - ticks: number of CPU cycles into emulation.
+//  - frameIndex: number of completed GPU flips.
+//  - eventIndex: number of the latest emitted cpu.stepping/cpu.resume broadcast event.
+//  - steppingCounter: number increasing each time a cpu.stepping event is broadcast.
 void WebSocketCPUStatus(DebuggerRequest &req) {
 	JsonWriter &json = req.Respond();
 
@@ -116,6 +121,9 @@ void WebSocketCPUStatus(DebuggerRequest &req) {
 	json.writeUint("pc", pspInited ? currentMIPS->pc : 0);
 	// A double ought to be good enough for a 156 day debug session.
 	json.writeFloat("ticks", pspInited ? CoreTiming::GetTicks() : 0);
+	json.writeInt("frameIndex", pspInited ? gpuStats.numFlips : 0);
+	json.writeInt("eventIndex", pspInited ? (int)WebSocketSteppingEventIndex() : 0);
+	json.writeInt("steppingCounter", pspInited ? Core_GetSteppingCounter() : 0);
 }
 
 // Retrieve all regs and their values (cpu.getAllRegs)

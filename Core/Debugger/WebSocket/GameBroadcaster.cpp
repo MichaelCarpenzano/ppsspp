@@ -20,13 +20,21 @@
 #include "Core/ELF/ParamSFO.h"
 #include "Core/System.h"
 
+static uint32_t g_gameEventIndex = 0;
+
+uint32_t WebSocketGameEventIndex() {
+	return g_gameEventIndex;
+}
+
 struct GameStatusEvent {
 	const char *ev;
+	uint32_t eventIndex;
 
 	operator std::string() {
 		JsonWriter j;
 		j.begin();
 		j.writeString("event", ev);
+		j.writeInt("eventIndex", (int)eventIndex);
 		if (PSP_GetBootState() == BootState::Complete) {
 			j.pushDict("game");
 			j.writeString("id", g_paramSFO.GetDiscID());
@@ -78,16 +86,16 @@ void GameBroadcaster::Broadcast(net::WebSocketServer *ws) {
 	GlobalUIState state = GetUIState();
 	if (prevState_ != state) {
 		if (state == UISTATE_PAUSEMENU) {
-			ws->Send(GameStatusEvent{"game.pause"});
+			ws->Send(GameStatusEvent{"game.pause", ++g_gameEventIndex});
 			prevState_ = state;
 		} else if (state == UISTATE_INGAME && prevState_ == UISTATE_PAUSEMENU) {
-			ws->Send(GameStatusEvent{"game.resume"});
+			ws->Send(GameStatusEvent{"game.resume", ++g_gameEventIndex});
 			prevState_ = state;
 		} else if (state == UISTATE_INGAME && PSP_GetBootState() == BootState::Complete) {
-			ws->Send(GameStatusEvent{"game.start"});
+			ws->Send(GameStatusEvent{"game.start", ++g_gameEventIndex});
 			prevState_ = state;
 		} else if (state == UISTATE_MENU && PSP_GetBootState() != BootState::Complete) {
-			ws->Send(GameStatusEvent{"game.quit"});
+			ws->Send(GameStatusEvent{"game.quit", ++g_gameEventIndex});
 			prevState_ = state;
 		}
 	}

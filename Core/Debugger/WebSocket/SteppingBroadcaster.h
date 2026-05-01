@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "Core/Core.h"
 
 namespace net {
@@ -35,3 +37,5 @@ private:
 	CoreState prevState_;
 	int lastCounter_ = 0;
 };
+
+uint32_t WebSocketSteppingEventIndex();

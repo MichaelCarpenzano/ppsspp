@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "Core/System.h"
 
 namespace net {
@@ -34,3 +36,5 @@ public:
 private:
 	GlobalUIState prevState_;
 };
+
+uint32_t WebSocketGameEventIndex();

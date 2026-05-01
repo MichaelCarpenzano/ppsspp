@@ -24,9 +24,13 @@
 #include "GPU/GPU.h"
 #include "GPU/Common/GPUDebugInterface.h"
 
+static uint32_t g_gpuTraceCallIndex = 0;
+static uint32_t g_gpuTraceEventIndex = 0;
+
 struct WebSocketGPURecordState : public DebuggerSubscriber {
 	~WebSocketGPURecordState();
 	void Dump(DebuggerRequest &req);
+	void TraceGet(DebuggerRequest &req);
 
 	void Broadcast(net::WebSocketServer *ws) override;
 
@@ -39,6 +43,7 @@ protected:
 DebuggerSubscriber *WebSocketGPURecordInit(DebuggerEventHandlerMap &map) {
 	auto p = new WebSocketGPURecordState();
 	map["gpu.record.dump"] = [p](DebuggerRequest &req) { p->Dump(req); };
+	map["gpu.trace.get"] = [p](DebuggerRequest &req) { p->TraceGet(req); };
 
 	return p;
 }
@@ -75,6 +80,102 @@ void WebSocketGPURecordState::Dump(DebuggerRequest &req) {
 
 	const JsonNode *value = req.data.get("ticket");
 	lastTicket_ = value ? json_stringify(value) : "";
+}
+
+// Fetch deterministic GE trace events (gpu.trace.get)
+//
+// Parameters:
+//  - max_frames: optional bounded frame limit.
+//  - max_events: optional bounded event limit.
+//
+// Response (same event name):
+//  - supported: true (snapshot mode only in this build.)
+//  - capability: "geTrace".
+//  - max_frames/max_events/truncated: normalized trace limit metadata.
+void WebSocketGPURecordState::TraceGet(DebuggerRequest &req) {
+	DebuggerTraceLimits limits;
+	if (!DebuggerParseTraceLimits(req, &limits))
+		return;
+
+	JsonWriter &json = req.Respond();
+	json.writeBool("supported", true);
+	json.writeString("mode", "snapshot");
+	json.writeString("capability", "geTrace");
+	DebuggerWriteTraceLimits(json, limits);
+	json.writeInt("frame_span_start", gpuStats.numFlips);
+	json.writeInt("frame_span_end", gpuStats.numFlips);
+	json.writeInt("callIndex", (int)++g_gpuTraceCallIndex);
+	json.writeString("notes", "Current-frame GPU counters only; deep GE command stream events are not yet exposed.");
+
+	// We provide one-frame deterministic snapshots from existing GPU counters.
+	json.pushArray("volatileFields");
+	json.writeString("events[].msProcessingDisplayLists");
+	json.writeString("events[].msPrepareDepth");
+	json.writeString("events[].msCullDepth");
+	json.writeString("events[].msRasterizeDepth");
+	json.writeString("events[].msRasterTimeAvailable");
+	json.pop();
+
+	int blockIndex = 0;
+	int emitted = 0;
+	bool truncated = limits.truncated || limits.maxFrames == 0;
+	const int callIndex = (int)g_gpuTraceCallIndex;
+	const int frameIndex = gpuStats.numFlips;
+	json.pushArray("events");
+	auto emitCounter = [&](const char *name, int value) {
+		if ((uint32_t)emitted >= limits.maxEvents) {
+			truncated = true;
+			return;
+		}
+		json.pushDict();
+		json.writeInt("frame_index", frameIndex);
+		json.writeInt("callIndex", callIndex);
+		json.writeInt("blockIndex", blockIndex++);
+		json.writeInt("eventIndex", (int)++g_gpuTraceEventIndex);
+		json.writeString("type", "counter");
+		json.writeString("counter", name);
+		json.writeInt("value", value);
+		json.pop();
+		++emitted;
+	};
+	auto emitFloatCounter = [&](const char *name, double value) {
+		if ((uint32_t)emitted >= limits.maxEvents) {
+			truncated = true;
+			return;
+		}
+		json.pushDict();
+		json.writeInt("frame_index", frameIndex);
+		json.writeInt("callIndex", callIndex);
+		json.writeInt("blockIndex", blockIndex++);
+		json.writeInt("eventIndex", (int)++g_gpuTraceEventIndex);
+		json.writeString("type", "counter");
+		json.writeString("counter", name);
+		json.writeFloat("value", value);
+		json.pop();
+		++emitted;
+	};
+
+	emitCounter("numFlips", gpuStats.numFlips);
+	emitCounter("numDrawCalls", gpuStats.numDrawCalls);
+	emitCounter("numVertsSubmitted", gpuStats.numVertsSubmitted);
+	emitCounter("numVertsDecoded", gpuStats.numVertsDecoded);
+	emitCounter("numFlushes", gpuStats.numFlushes);
+	emitCounter("numClears", gpuStats.numClears);
+	emitCounter("numBlockTransfers", gpuStats.numBlockTransfers);
+	emitCounter("numReadbacks", gpuStats.numReadbacks);
+	emitCounter("numUploads", gpuStats.numUploads);
+	emitCounter("numTextureInvalidations", gpuStats.numTextureInvalidations);
+	emitCounter("vertexGPUCycles", gpuStats.vertexGPUCycles);
+	emitCounter("otherGPUCycles", gpuStats.otherGPUCycles);
+	emitFloatCounter("msProcessingDisplayLists", gpuStats.msProcessingDisplayLists);
+	emitFloatCounter("msPrepareDepth", gpuStats.msPrepareDepth);
+	emitFloatCounter("msCullDepth", gpuStats.msCullDepth);
+	emitFloatCounter("msRasterizeDepth", gpuStats.msRasterizeDepth);
+	emitFloatCounter("msRasterTimeAvailable", gpuStats.msRasterTimeAvailable);
+	json.pop();
+
+	json.writeInt("eventCount", emitted);
+	json.writeBool("eventsTruncated", truncated);
 }
 
 // This handles the asynchronous gpu.record.dump response.

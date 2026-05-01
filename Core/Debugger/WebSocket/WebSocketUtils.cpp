@@ -286,3 +286,48 @@ uint32_t RoundMemAddressUp(uint32_t addr) {
 		return PSP_GetScratchpadMemoryBase();
 	return addr;
 }
+
+bool DebuggerParseTraceLimits(DebuggerRequest &req, DebuggerTraceLimits *limits, uint32_t defaultFrames, uint32_t defaultEvents) {
+	limits->maxFrames = defaultFrames;
+	limits->maxEvents = defaultEvents;
+	limits->truncated = false;
+
+	if (!req.ParamU32("max_frames", &limits->maxFrames, false, DebuggerParamType::OPTIONAL))
+		return false;
+	if (!req.ParamU32("max_events", &limits->maxEvents, false, DebuggerParamType::OPTIONAL))
+		return false;
+
+	if (limits->maxFrames == 0 || limits->maxEvents == 0) {
+		req.Fail("Trace limits must be greater than zero");
+		return false;
+	}
+
+	constexpr uint32_t MAX_TRACE_FRAMES = 600;
+	constexpr uint32_t MAX_TRACE_EVENTS = 100000;
+	if (limits->maxFrames > MAX_TRACE_FRAMES) {
+		limits->maxFrames = MAX_TRACE_FRAMES;
+		limits->truncated = true;
+	}
+	if (limits->maxEvents > MAX_TRACE_EVENTS) {
+		limits->maxEvents = MAX_TRACE_EVENTS;
+		limits->truncated = true;
+	}
+
+	return true;
+}
+
+void DebuggerWriteTraceLimits(JsonWriter &json, const DebuggerTraceLimits &limits) {
+	json.writeUint("max_frames", limits.maxFrames);
+	json.writeUint("max_events", limits.maxEvents);
+	json.writeBool("truncated", limits.truncated);
+}
+
+void DebuggerRespondUnsupported(DebuggerRequest &req, const char *capability, const char *message) {
+	JsonWriter &json = req.Respond();
+	json.writeBool("supported", false);
+	json.writeString("reason", "unsupported");
+	json.writeString("capability", capability);
+	if (message) {
+		json.writeString("message", message);
+	}
+}

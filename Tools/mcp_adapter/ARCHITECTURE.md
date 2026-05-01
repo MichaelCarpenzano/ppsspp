@@ -146,13 +146,18 @@ All messages are JSON objects sent as WebSocket text frames.
 | Command | Parameters | Response fields |
 |---------|-----------|-----------------|
 | `version` | `name`, `version` | `name`, `version` |
-| `cpu.status` | — | `pc`, `ticks`, `stepping`, `started` |
+| `debugger.capabilities` | — | `schemaVersion`, `hooks`, `events` |
+| `settings.fingerprint` | — | `schemaVersion`, `algorithm`, `fingerprint`, `settings` |
+| `cpu.status` | — | `pc`, `ticks`, `stepping`, `paused`, `frameIndex`, `eventIndex`, `steppingCounter` |
 | `cpu.stepping` | — | (async `cpu.stepping` event) |
 | `cpu.resume` | — | (async `cpu.stepping` event with `stepping:false`) |
 | `cpu.stepFrame` | — | `accepted: true` (async `cpu.stepping` completion) |
-| `game.status` | — | `game`, `id`, `title`, `started` |
+| `game.status` | — | `game`, `paused`, `eventIndex` |
 | `gpu.buffer.screenshot` | `type:"uri"`, `alpha:bool` | `uri`, `width`, `height` |
 | `gpu.buffer.renderColor` | `type:"uri"`, `alpha:bool` | `uri`, `width`, `height` |
+| `gpu.trace.get` | `max_frames`, `max_events` (optional) | `supported`, `mode`, bounded `events[]` GPU counter snapshots |
+| `audio.trace.get` | `max_frames`, `max_events` (optional) | `supported`, `mode`, bounded `events[]` channel-state snapshots |
+| `memory.trace.get` | `max_frames`, `max_events` (optional), `address`, `size`, `type` | `supported`, `mode`, bounded `events[]` MemBlockInfo extents |
 | `input.buttons.send` | `buttons:{<name>:bool}` | `buttons` |
 | `input.buttons.press` | `button:<name>`, `duration:<frames>` | `button`, `duration` |
 | `memory.read` | `address`, `size` | `base64` |
@@ -161,7 +166,40 @@ All messages are JSON objects sent as WebSocket text frames.
 | `savestate.load` | `slot` (0-4) | `slot`, `size` |
 | `savestate.list` | — | `slots[]` |
 
-### 2.4 Stepping Flow
+### 2.4 Debugger Contract Metadata
+
+`debugger.capabilities` is the versioned feature-discovery entry point for hook
+tracker clients. Its `hooks` object reports stable settings fingerprints,
+CPU frame/event indexing, bounded trace limit support, and whether GE/audio/memory
+trace hooks are implemented by the current build.
+
+`settings.fingerprint` returns an Adler-32 hash over normalized determinism-relevant
+settings, including CPU core/JIT flags, GPU backend/rendering options, clock options,
+audio mode, and selected compatibility hacks. Consumers should compare the
+`schemaVersion` and `algorithm` fields before comparing fingerprints across builds.
+
+`cpu.status` and unsolicited `cpu.stepping` now include:
+- `frameIndex`: completed GPU flip count at the time of the status/event.
+- `eventIndex`: monotonic debugger CPU stepping/resume event counter.
+- `steppingCounter`: core stepping counter from `Core_GetSteppingCounter()`.
+
+Trace-family endpoints (`gpu.trace.get`, `audio.trace.get`,
+`memory.trace.get`) accept bounded controls:
+- `max_frames`: maximum frame span requested.
+- `max_events`: maximum event count requested.
+- `truncated`: true when requested limits were clamped by PPSSPP.
+- `eventsTruncated`: true when bounded event emission clipped results.
+
+These endpoints currently provide deterministic snapshot traces backed by
+existing engine counters/state:
+- `gpu.trace.get`: one-frame GPU counter snapshots with stable per-event indices.
+- `audio.trace.get`: per-channel audio state snapshots with stable per-event indices.
+- `memory.trace.get`: memory tag extents from existing MemBlockInfo tracking.
+
+Deep per-command GE streams, per-sample audio streams, and full raw memory
+access streams still require additional invasive instrumentation.
+
+### 2.5 Stepping Flow
 
 ```
 Client                          PPSSPP

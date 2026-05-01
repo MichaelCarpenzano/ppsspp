@@ -21,6 +21,9 @@
 
 DebuggerSubscriber *WebSocketGameInit(DebuggerEventHandlerMap &map);
 
+void WebSocketAudioTraceGet(DebuggerRequest &req);
 void WebSocketGameReset(DebuggerRequest &req);
 void WebSocketGameStatus(DebuggerRequest &req);
+void WebSocketDebuggerCapabilities(DebuggerRequest &req);
+void WebSocketSettingsFingerprint(DebuggerRequest &req);
 void WebSocketVersion(DebuggerRequest &req);

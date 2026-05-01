@@ -21,6 +21,7 @@
 #include "Common/Data/Encoding/Base64.h"
 #include "Common/StringUtils.h"
 #include "Core/Core.h"
+#include "Core/Debugger/MemBlockInfo.h"
 #include "Core/Debugger/WebSocket/MemorySubscriber.h"
 #include "Core/Debugger/WebSocket/WebSocketUtils.h"
 #include "Core/HLE/ReplaceTables.h"
@@ -28,6 +29,22 @@
 #include "Core/MIPS/MIPSDebugInterface.h"
 #include "Core/Reporting.h"
 #include "Core/System.h"
+#include "GPU/GPU.h"
+
+static uint32_t g_memoryTraceCallIndex = 0;
+static uint32_t g_memoryTraceEventIndex = 0;
+
+static MemBlockFlags MemoryTraceFlagFromType(const std::string &type) {
+	if (type == "write")
+		return MemBlockFlags::WRITE;
+	if (type == "texture")
+		return MemBlockFlags::TEXTURE;
+	if (type == "alloc")
+		return MemBlockFlags::ALLOC;
+	if (type == "suballoc")
+		return MemBlockFlags::SUB_ALLOC;
+	return MemBlockFlags::SKIP_MEMCHECK;
+}
 
 DebuggerSubscriber *WebSocketMemoryInit(DebuggerEventHandlerMap &map) {
 	// No need to bind or alloc state, these are all global.
@@ -40,8 +57,102 @@ DebuggerSubscriber *WebSocketMemoryInit(DebuggerEventHandlerMap &map) {
 	map["memory.write_u16"] = &WebSocketMemoryWriteU16;
 	map["memory.write_u32"] = &WebSocketMemoryWriteU32;
 	map["memory.write"] = &WebSocketMemoryWrite;
+	map["memory.trace.get"] = &WebSocketMemoryTraceGet;
 
 	return nullptr;
+}
+
+// Fetch deterministic memory behavior trace events (memory.trace.get)
+//
+// Parameters:
+//  - max_frames: optional bounded frame limit.
+//  - max_events: optional bounded event limit.
+//
+// Response (same event name):
+//  - supported: true (snapshot mode only in this build.)
+//  - max_frames/max_events/truncated: normalized trace limit metadata.
+//  - callIndex: monotonically increasing request index.
+//  - events: bounded memory-tag extent events from existing MemBlockInfo tracking.
+void WebSocketMemoryTraceGet(DebuggerRequest &req) {
+	if (!currentDebugMIPS->isAlive() || !Memory::IsActive())
+		return req.Fail("CPU not started");
+
+	DebuggerTraceLimits limits;
+	if (!DebuggerParseTraceLimits(req, &limits))
+		return;
+
+	std::string type;
+	if (!req.ParamString("type", &type, DebuggerParamType::OPTIONAL))
+		return;
+	MemBlockFlags flags = MemoryTraceFlagFromType(type);
+	if (flags == MemBlockFlags::SKIP_MEMCHECK && req.HasParam("type"))
+		return req.Fail("Invalid type - expecting write, texture, alloc, or suballoc");
+
+	uint32_t kernelMemorySize = PSP_GetKernelMemoryEnd() - PSP_GetKernelMemoryBase();
+	uint32_t volatileMemorySize = PSP_GetVolatileMemoryEnd() - PSP_GetVolatileMemoryStart();
+	uint32_t maxMemorySize = Memory::g_MemorySize != 0 ? Memory::g_MemorySize : Memory::RAM_NORMAL_SIZE;
+	uint32_t defaultAddress = PSP_GetUserMemoryBase();
+	uint32_t defaultSize = maxMemorySize - kernelMemorySize - volatileMemorySize;
+
+	uint32_t address = defaultAddress;
+	if (!req.ParamU32("address", &address, false, DebuggerParamType::OPTIONAL))
+		return;
+	uint32_t size = defaultSize;
+	if (!req.ParamU32("size", &size, false, DebuggerParamType::OPTIONAL))
+		return;
+
+	if (!Memory::IsValidAddress(address))
+		return req.Fail("Invalid address");
+	if (!Memory::IsValidRange(address, size))
+		return req.Fail("Invalid size");
+
+	std::vector<MemBlockInfo> results = flags == MemBlockFlags::SKIP_MEMCHECK ? FindMemInfo(address, size) : FindMemInfoByFlag(flags, address, size);
+
+	JsonWriter &json = req.Respond();
+	json.writeBool("supported", true);
+	json.writeString("mode", "snapshot");
+	json.writeString("capability", "memoryTrace");
+	DebuggerWriteTraceLimits(json, limits);
+	json.writeInt("frame_span_start", gpuStats.numFlips);
+	json.writeInt("frame_span_end", gpuStats.numFlips);
+	json.writeInt("callIndex", (int)++g_memoryTraceCallIndex);
+	json.writeUint("address", address);
+	json.writeUint("size", size);
+	json.writeString("notes", "Uses existing MemBlockInfo extent tracking; does not include every raw memory access.");
+
+	json.pushArray("volatileFields");
+	json.writeString("events[].ticks");
+	json.pop();
+
+	const int callIndex = (int)g_memoryTraceCallIndex;
+	const int frameIndex = gpuStats.numFlips;
+	bool truncated = limits.truncated;
+	int emitted = 0;
+	int blockIndex = 0;
+	json.pushArray("events");
+	for (const auto &result : results) {
+		if ((uint32_t)emitted >= limits.maxEvents) {
+			truncated = true;
+			break;
+		}
+		json.pushDict();
+		json.writeInt("frame_index", frameIndex);
+		json.writeInt("callIndex", callIndex);
+		json.writeInt("blockIndex", blockIndex++);
+		json.writeInt("eventIndex", (int)++g_memoryTraceEventIndex);
+		json.writeUint("flags", (uint32_t)result.flags);
+		json.writeUint("address", result.start);
+		json.writeUint("size", result.size);
+		json.writeFloat("ticks", (double)result.ticks);
+		json.writeUint("pc", result.pc);
+		json.writeString("tag", result.tag);
+		json.writeBool("allocated", result.allocated);
+		json.pop();
+		++emitted;
+	}
+	json.pop();
+	json.writeInt("eventCount", emitted);
+	json.writeBool("eventsTruncated", truncated);
 }
 
 struct AutoDisabledReplacements {

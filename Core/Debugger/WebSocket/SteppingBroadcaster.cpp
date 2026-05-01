@@ -21,18 +21,28 @@
 #include "Core/Debugger/WebSocket/WebSocketUtils.h"
 #include "Core/MIPS/MIPS.h"
 #include "Core/System.h"
+#include "GPU/GPU.h"
+
+static uint32_t g_steppingEventIndex = 0;
+
+uint32_t WebSocketSteppingEventIndex() {
+	return g_steppingEventIndex;
+}
 
 struct CPUSteppingEvent {
-	CPUSteppingEvent(const SteppingReason &reason) : reason_(reason) {
+	CPUSteppingEvent(const SteppingReason &reason, int steppingCounter, uint32_t eventIndex) : reason_(reason), steppingCounter_(steppingCounter), eventIndex_(eventIndex) {
 	}
 
 	operator std::string() {
 		JsonWriter j;
 		j.begin();
 		j.writeString("event", "cpu.stepping");
+		j.writeInt("eventIndex", (int)eventIndex_);
+		j.writeInt("frameIndex", gpuStats.numFlips);
 		j.writeUint("pc", currentMIPS->pc);
 		// A double ought to be good enough for a 156 day debug session.
 		j.writeFloat("ticks", CoreTiming::GetTicks());
+		j.writeInt("steppingCounter", steppingCounter_);
 		if (reason_.reason != BreakReason::None) {
 			j.writeString("reason", BreakReasonToString(reason_.reason));
 			j.writeUint("relatedAddress", reason_.relatedAddress);
@@ -43,11 +53,15 @@ struct CPUSteppingEvent {
 
 private:
 	const SteppingReason &reason_;
+	int steppingCounter_;
+	uint32_t eventIndex_;
 };
 
 // CPU has begun stepping (cpu.stepping)
 //
 // Sent unexpectedly with these properties:
+//  - eventIndex: monotonically increasing CPU stepping/resume event counter.
+//  - frameIndex: number of completed GPU flips.
 //  - pc: number value of PC register (inaccurate unless stepping.)
 //  - ticks: number of CPU cycles into emulation.
 //  - reason: an optional property, if present, it's equal to the value submitted to Core_EnableStepping ("jit.branchdebug", "savestate.load", "ui.lost_focus", etc.)
@@ -61,9 +75,14 @@ void SteppingBroadcaster::Broadcast(net::WebSocketServer *ws) {
 		int steppingCounter = Core_GetSteppingCounter();
 		// We ignore CORE_POWERDOWN as a stepping state.
 		if (coreState == CORE_STEPPING_CPU && steppingCounter != lastCounter_) {
-			ws->Send(CPUSteppingEvent(Core_GetSteppingReason()));
+			ws->Send(CPUSteppingEvent(Core_GetSteppingReason(), steppingCounter, ++g_steppingEventIndex));
 		} else if (prevState_ == CORE_STEPPING_CPU && coreState != CORE_STEPPING_CPU && Core_IsActive()) {
-			ws->Send(R"({"event":"cpu.resume"})");
+			JsonWriter j;
+			j.begin();
+			j.writeString("event", "cpu.resume");
+			j.writeInt("eventIndex", (int)++g_steppingEventIndex);
+			j.end();
+			ws->Send(j.str());
 		}
 		lastCounter_ = steppingCounter;
 		prevState_ = coreState;

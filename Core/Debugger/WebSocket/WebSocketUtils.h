@@ -108,6 +108,12 @@ private:
 	bool responsePartial_ = false;
 };
 
+struct DebuggerTraceLimits {
+	uint32_t maxFrames = 1;
+	uint32_t maxEvents = 1024;
+	bool truncated = false;
+};
+
 class DebuggerSubscriber {
 public:
 	virtual ~DebuggerSubscriber() {}
@@ -120,3 +126,7 @@ typedef std::function<void(DebuggerRequest &req)> DebuggerEventHandler;
 typedef std::unordered_map<std::string_view, DebuggerEventHandler> DebuggerEventHandlerMap;
 
 uint32_t RoundMemAddressUp(uint32_t addr);
+
+bool DebuggerParseTraceLimits(DebuggerRequest &req, DebuggerTraceLimits *limits, uint32_t defaultFrames = 1, uint32_t defaultEvents = 1024);
+void DebuggerWriteTraceLimits(JsonWriter &json, const DebuggerTraceLimits &limits);
+void DebuggerRespondUnsupported(DebuggerRequest &req, const char *capability, const char *message = nullptr);
